@@ -4,10 +4,9 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import json
 
-# Charge les variables du fichier .env local
+
 load_dotenv()
 
-# --- CONFIGURATION ---
 CTFD_URL = "https://ctf.pony7.fr/api/v1"
 API_TOKEN = os.getenv("CTFD_API_TOKEN")
 
@@ -16,11 +15,9 @@ if not API_TOKEN:
 
 OUTPUT_PATH = "/var/www/ctf-event/index.html"
 
-# Fenêtre de temps du CTF
 CTF_START = datetime(2025, 10, 12, 0, 0, 0, tzinfo=timezone.utc)
 CTF_END   = datetime(2025, 10, 22, 23, 59, 59, tzinfo=timezone.utc)
 
-# La liste stricte des challenges pour l'événement annuel
 EVENT_CHALLENGE_IDS = [
     1, 2, 5, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 
     21, 22, 24, 29, 30, 31, 32, 33, 35, 36, 37, 39, 40, 41, 42, 
