@@ -1,1 +1,1 @@
-This readme will describe our code
+This project let us retrieve data from a CTFd instance and parse the content to create a ranking on a period and on some challenge: it is usefull to capture the ranking of a given CTF done on the instance.
