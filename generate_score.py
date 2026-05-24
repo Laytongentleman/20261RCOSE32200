@@ -2,6 +2,7 @@ import os
 import requests
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+import json
 
 # Charge les variables du fichier .env local
 load_dotenv()
@@ -27,7 +28,7 @@ EVENT_CHALLENGE_IDS = [
     61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 72, 85, 89, 92, 95, 
     97, 98, 99, 100, 101, 103, 104, 105, 106, 107, 109, 110, 111, 
     112, 113
-]# ---------------------
+] # ---------------------
 
 HEADERS = {
     "Authorization": f"Bearer {API_TOKEN}",
@@ -74,7 +75,7 @@ def build_scoreboard():
                 if CTF_START <= solve_time <= CTF_END:
                     # Initialisation du joueur s'il s'agit de son premier flag valide retenu
                     if username not in scoreboard:
-                        scoreboard[username] = {"score": 0, "last_solve": solve_time}
+                        scoreboard[username] = {"score": 0, "last_solve": solve_time, "solves_timeline": []}
 
                     # Accumulation des points du défi
                     scoreboard[username]["score"] += chall_value
@@ -82,6 +83,12 @@ def build_scoreboard():
                     # Tie-break : mise à jour de l'horodatage si la soumission est plus récente
                     if solve_time > scoreboard[username]["last_solve"]:
                         scoreboard[username]["last_solve"] = solve_time
+                        
+                    # Stockage pour le graphique de progression
+                    scoreboard[username]["solves_timeline"].append({
+                        "time": solve_time,
+                        "value": chall_value
+                    })
                 else:
                     # Log d'information optionnel pour le débug en console
                     print(f"[!] Flag hors-délai ignoré pour {username} sur le challenge {chall_id} : {solve_time}")
@@ -93,6 +100,52 @@ def build_scoreboard():
     sorted_ranking = sorted(scoreboard.items(), key=lambda x: (-x[1]['score'], x[1]['last_solve']))
     print(f"[*] Nombre de joueurs qualifiés dans la fenêtre temporelle : {len(sorted_ranking)}")
 
+    # --- PRÉPARATION DES DONNÉES DU GRAPH COMPATIBLE CHART.JS ---
+    # On isole le Top 10 pour ne pas surcharger le graphique visuellement (comme le fait CTFd)
+    top_10 = sorted_ranking[:10]
+    chart_datasets = []
+    
+    # Palette de couleurs distinctes de style CTFd/Cyberpunk pour le Top 10
+    colors = [
+        '#4ade80', '#60a5fa', '#f472b6', '#fbbf24', '#a78bfa', 
+        '#f87171', '#2dd4bf', '#fb7185', '#38bdf8', '#fb923c'
+    ]
+
+    for idx, (user, data) in enumerate(top_10):
+        # Trier l'historique personnel chronologiquement
+        sorted_solves = sorted(data["solves_timeline"], key=lambda x: x["time"])
+        
+        # Le point de départ (score 0 au début du CTF)
+        user_points_history = [{"x": CTF_START.isoformat(), "y": 0}]
+        cumulative_score = 0
+        
+        for s in sorted_solves:
+            cumulative_score += s["value"]
+            user_points_history.append({
+                "x": s["time"].isoformat(),
+                "y": cumulative_score
+            })
+            
+        # Point final pour étendre la ligne jusqu'à maintenant ou à la fin du CTF
+        current_now = datetime.now(timezone.utc)
+        graph_end_time = current_now if current_now < CTF_END else CTF_END
+        user_points_history.append({
+            "x": graph_end_time.isoformat(),
+            "y": cumulative_score
+        })
+
+        chart_datasets.append({
+            "label": user,
+            "data": user_points_history,
+            "borderColor": colors[idx % len(colors)],
+            "backgroundColor": colors[idx % len(colors)] + "1A", # Transparence pour le remplissage
+            "borderWidth": 2,
+            "radius": 3,
+            "hoverRadius": 5,
+            "stepped": True, # Ligne en escalier type CTFd originale
+            "fill": False
+        })
+
     # --- GÉNÉRATION HTML ---
     html_content = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -102,16 +155,30 @@ def build_scoreboard():
     <title>Classement Live - CTF Événement</title>
     <meta http-equiv="refresh" content="30"> 
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js + l'adaptateur de gestion du temps -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col items-center py-12 px-4">
     <div class="w-full max-w-4xl">
-        <header class="text-center mb-12">
+        <header class="text-center mb-8">
             <h1 class="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-green-400 to-green-500 bg-clip-text text-transparent">
                 Classement du 7TF 2025
             </h1>
             <p class="text-slate-400 mt-2 text-sm">Dernière mise à jour : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Heure Serveur)</p>
         </header>
 
+        <!-- ZONE DU GRAPHIQUE (CTFd Style) -->
+        <section class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-6 mb-8">
+            <h2 class="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
+                📈 Progression du Top 10
+            </h2>
+            <div class="relative w-full h-72">
+                <canvas id="ctfdProgressionChart"></canvas>
+            </div>
+        </section>
+
+        <!-- TABLEAU DES RANGS -->
         <main class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden">
             <table class="w-full text-left border-collapse">
                 <thead>
@@ -145,11 +212,78 @@ def build_scoreboard():
                     </tr>
         """
 
-    html_content += """
+    # Insertion des jeux de données JSON directement dans le script JS client
+    html_content += f"""
                 </tbody>
             </table>
         </main>
     </div>
+
+    <script>
+        const chartData = {json.dumps(chart_datasets)};
+        
+        const ctx = document.getElementById('ctfdProgressionChart').getContext('2d');
+        new Chart(ctx, {{
+            type: 'line',
+            data: {{
+                datasets: chartData
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {{
+                    x: {{
+                        type: 'time',
+                        time: {{
+                            displayFormats: {{
+                                hour: 'dd MMM HH:mm',
+                                day: 'dd MMM'
+                            }}
+                        }},
+                        grid: {{
+                            color: 'rgba(51, 65, 85, 0.5)'
+                        }},
+                        ticks: {{
+                            color: '#94a3b8'
+                        }}
+                    }},
+                    y: {{
+                        beginAtZero: true,
+                        grid: {{
+                            color: 'rgba(51, 65, 85, 0.5)'
+                        }},
+                        ticks: {{
+                            color: '#94a3b8'
+                        }},
+                        title: {{
+                            display: true,
+                            text: 'Points',
+                            color: '#94a3b8'
+                        }}
+                    }}
+                }},
+                plugins: {{
+                    legend: {{
+                        position: 'bottom',
+                        labels: {{
+                            color: '#f1f5f9',
+                            boxWidth: 12,
+                            padding: 15
+                        }}
+                    }},
+                    tooltip: {{
+                        mode: 'index',
+                        intersect: false
+                    }}
+                }},
+                interaction: {{
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }}
+            }}
+        }});
+    </script>
 </body>
 </html>
     """
