@@ -15,11 +15,11 @@ if not API_TOKEN:
 
 OUTPUT_PATH = "/var/www/ctf-event/index.html"
 
-# Fenêtre de temps du CTF (Du 12 octobre 2025 à 00:00:00 au 22 octobre 2025 à 23:59:59 UTC)
+# Fenêtre de temps du CTF
 CTF_START = datetime(2025, 10, 12, 0, 0, 0, tzinfo=timezone.utc)
 CTF_END   = datetime(2025, 10, 22, 23, 59, 59, tzinfo=timezone.utc)
 
-# La liste stricte de tes challenges pour l'événement annuel
+# La liste stricte des challenges pour l'événement annuel
 EVENT_CHALLENGE_IDS = [
     1, 2, 5, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20, 
     21, 22, 24, 29, 30, 31, 32, 33, 35, 36, 37, 39, 40, 41, 42, 
