@@ -1,3 +1,4 @@
 We also need to do :
 - separation between years 
 - generation of multiple pages for several ctf, with only one parse or just update one
+- implement the page on the ctfd instance itself
